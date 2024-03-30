@@ -7,6 +7,7 @@ struct Person {
     first_name: String,
     last_name: String,
     is_staff: bool,
+    x: f64,
 }
 
 #[test]
