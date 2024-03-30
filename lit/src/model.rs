@@ -80,6 +80,30 @@ impl From<SqliteValue> for Option<bool> {
     }
 }
 
+impl From<i64> for SqliteValue {
+    fn from(value: i64) -> Self {
+        Self::INTEGER(value)
+    }
+}
+
+impl From<bool> for SqliteValue {
+    fn from(value: bool) -> Self {
+        Self::INTEGER(value.into())
+    }
+}
+
+impl From<f64> for SqliteValue {
+    fn from(value: f64) -> Self {
+        Self::REAL(value)
+    }
+}
+
+impl From<String> for SqliteValue {
+    fn from(value: String) -> Self {
+        Self::TEXT(value)
+    }
+}
+
 impl Display for SqliteColumnType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -109,7 +133,7 @@ static FILEPATH: RwLock<Option<String>> = RwLock::new(None);
 
 pub static INIT_STMT_REGISTRY: RwLock<Vec<String>> = RwLock::new(Vec::new());
 
-fn new_db_connection() -> anyhow::Result<Connection> {
+fn new_db_connection() -> crate::Result<Connection> {
     let filepath = FILEPATH
         .read()
         .unwrap()
@@ -118,7 +142,7 @@ fn new_db_connection() -> anyhow::Result<Connection> {
     Ok(rusqlite::Connection::open(filepath)?)
 }
 
-pub fn setup_db(path: &str) -> anyhow::Result<()> {
+pub fn setup_db(path: &str) -> crate::Result<()> {
     *FILEPATH.write().unwrap() = Some(path.to_string());
     let connection = new_db_connection()?;
     for stmt in INIT_STMT_REGISTRY.read().unwrap().iter() {
@@ -172,7 +196,7 @@ pub trait Model: Sized + Clone {
         )
     }
 
-    fn save(&mut self) -> anyhow::Result<()> {
+    fn save(&mut self) -> crate::Result<()> {
         *self = Self::objects().save(self)?;
         Ok(())
     }

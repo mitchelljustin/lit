@@ -3,12 +3,20 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 
+use proc_macro2::Ident;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
 use syn::{Data, Field, Fields, parse_macro_input, Type};
 use syn::spanned::Spanned;
 
 use lit::model::SqliteColumnType;
+
+#[derive(Clone)]
+struct ModelFieldMeta {
+    name: Ident,
+    col_type: SqliteColumnType,
+    field: Field,
+}
 
 #[proc_macro_error]
 #[proc_macro_derive(ModelStruct)]
@@ -35,28 +43,77 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     if path.path.segments.first().unwrap().ident != "i64" {
         abort!(id_field.ty.span(), "`id` field must be type `i64`");
     }
-    let model_fields: Vec<_> = fields_iter.collect();
-    let field_names = model_fields.iter().map(|f| f.ident.clone().unwrap());
-    let fields_quoted = model_fields.iter().map(|field| {
-        let name = field.ident.as_ref().unwrap().to_string();
-        let col_type = column_type_of(field);
-        let col_type = format_ident!("{col_type}");
-        quote! {
-            lit::model::ModelField {
-                name: #name,
-                col_type: lit::model::SqliteColumnType::#col_type,
-                _marker: std::marker::PhantomData,
+    let model_fields: Vec<_> = fields_iter
+        .map(|field| {
+            let name = field.ident.clone().unwrap();
+            let col_type = column_type_of(field);
+            ModelFieldMeta {
+                name,
+                col_type,
+                field: field.clone(),
             }
-        }
-    });
-    let values_quoted = model_fields.iter().map(|field| {
-        let name = field.ident.as_ref().unwrap();
-        let col_type = column_type_of(field);
-        let col_type = format_ident!("{col_type}");
+        })
+        .collect();
+    let field_names = model_fields.iter().map(|f| f.name.clone());
+    let fields_quoted =
+        model_fields
+            .iter()
+            .cloned()
+            .map(|ModelFieldMeta { name, col_type, .. }| {
+                let col_type = format_ident!("{col_type}");
+                let name = name.to_string();
+                quote! {
+                    lit::model::ModelField {
+                        name: #name,
+                        col_type: lit::model::SqliteColumnType::#col_type,
+                        _marker: std::marker::PhantomData,
+                    }
+                }
+            });
+    let values_quoted =
+        model_fields
+            .iter()
+            .cloned()
+            .map(|ModelFieldMeta { name, col_type, .. }| {
+                let col_type = format_ident!("{col_type}");
+                quote! {
+                    lit::model::SqliteValue::#col_type(self.#name.clone().into())
+                }
+            });
+    let model_method_sigs = model_fields
+        .iter()
+        .cloned()
+        .map(|ModelFieldMeta { name, field, .. }| {
+            let method_name = format_ident!("find_by_{name}");
+            let arg_type = field.ty;
+            quote! {
+                fn #method_name(&self, value: #arg_type) -> lit::Result<std::vec::Vec<#model_name>>
+            }
+        })
+        .zip(model_fields.iter().cloned())
+        .collect::<Vec<_>>();
+    let model_trait_methods = model_method_sigs.iter().cloned().map(|(fn_sig, _)| {
         quote! {
-            lit::model::SqliteValue::#col_type(self.#name.clone().into())
+            #fn_sig;
         }
     });
+    let model_trait_method_impls =
+        model_method_sigs
+            .iter()
+            .cloned()
+            .map(|(fn_sig, ModelFieldMeta { name, .. })| {
+                let selector = format!("{name}=?");
+                quote! {
+                    #fn_sig {
+                        let param = lit::model::SqliteValue::from(value);
+                        self.select(
+                            #selector,
+                            (param,),
+                        )
+                    }
+                }
+            });
+    let trait_name = format_ident!("{model_name}Methods");
     let tokens = quote! {
         impl lit::model::Model for #model_name {
             fn id(&self) -> Option<i64> {
@@ -66,7 +123,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     Some(self.id)
                 }
             }
-            
+
             fn model_name() -> &'static str {
                 #model_name_string
             }
@@ -93,6 +150,14 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     #(#field_names:  <Option<_>>::from(iter.next()?)?),*
                 })
             }
+        }
+
+        trait #trait_name {
+            #(#model_trait_methods)*
+        }
+
+        impl #trait_name for lit::objects::Objects<#model_name> {
+            #(#model_trait_method_impls)*
         }
     };
 
