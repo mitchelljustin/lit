@@ -31,6 +31,6 @@ fn test_simple_model() {
     assert!(yolo.id().is_some());
     yolo.last_name = "Swaggins".to_string();
     yolo.save().unwrap();
-    let yolos = Person::objects().select("first_name=?", ("Yolo".to_string(),));
+    let yolos = Person::objects().find_by_first_name("Yolo");
     println!("{yolos:#?}");
 }

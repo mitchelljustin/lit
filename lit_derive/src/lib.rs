@@ -87,7 +87,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             let method_name = format_ident!("find_by_{name}");
             let arg_type = field.ty;
             quote! {
-                fn #method_name(&self, value: #arg_type) -> lit::Result<std::vec::Vec<#model_name>>
+                fn #method_name(&self, value: impl Into<#arg_type>) -> lit::Result<std::vec::Vec<#model_name>>
             }
         })
         .zip(model_fields.iter().cloned())
@@ -105,7 +105,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 let selector = format!("{name}=?");
                 quote! {
                     #fn_sig {
-                        let param = lit::model::SqliteValue::from(value);
+                        let param = lit::model::SqliteValue::from(value.into());
                         self.select(
                             #selector,
                             (param,),
