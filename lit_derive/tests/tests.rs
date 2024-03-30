@@ -1,9 +1,10 @@
-use lit_derive::Model;
-use lit::model::{setup_db, ModelStruct};
+use lit::model::{Model, setup_db};
+use lit_derive::ModelStruct;
 
-#[derive(Model)]
+#[derive(Default, Clone, ModelStruct)]
 struct Person {
     id: i64,
+
     first_name: String,
     last_name: String,
     is_staff: bool,
@@ -18,16 +19,13 @@ fn init_db() {
 #[test]
 fn test_simple_model() {
     init_db();
-    assert_eq!(
-        Person::table_name(),
-        "persons",
-    );
-    let p = Person {
-        x: 0.5,
-        id: 100,
+    assert_eq!(Person::table_name(), "persons",);
+    let mut yolo = Person {
+        x: 0.99,
         first_name: "Yolo".to_string(),
         last_name: "Swag".to_string(),
-        is_staff: true,
+        is_staff: false,
+        ..Default::default()
     };
-    Person::objects().insert(p).unwrap();
+    yolo.save().unwrap();
 }
