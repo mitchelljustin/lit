@@ -156,7 +156,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             #(#model_trait_methods)*
         }
 
-        impl #trait_name for lit::objects::Objects<#model_name> {
+        impl #trait_name for lit::query_set::QuerySet<#model_name> {
             #(#model_trait_method_impls)*
         }
     };

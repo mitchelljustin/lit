@@ -4,13 +4,13 @@ use rusqlite::{params_from_iter, Row};
 
 use crate::model::{Model, SqliteValue};
 
-pub struct Objects<M: Model> {
+pub struct QuerySet<M: Model> {
     pub connection: rusqlite::Connection,
     pub _marker: PhantomData<M>,
 }
 
-impl<M: Model> Objects<M> {
-    pub fn insert(&self, instance: &M) -> anyhow::Result<M> {
+impl<M: Model> QuerySet<M> {
+    pub fn insert(&self, instance: &M) -> crate::Result<M> {
         if let Some(id) = instance.id() {
             anyhow::bail!("instance already has an ID: {id}");
         }
@@ -41,7 +41,7 @@ impl<M: Model> Objects<M> {
             .join(", ")
     }
 
-    pub fn save(&self, instance: &M) -> anyhow::Result<M> {
+    pub fn save(&self, instance: &M) -> crate::Result<M> {
         if instance.id().is_none() {
             return self.insert(instance);
         }
@@ -49,7 +49,7 @@ impl<M: Model> Objects<M> {
         Ok(instance.clone())
     }
 
-    pub fn upsert(&self, instance: &M) -> anyhow::Result<()> {
+    pub fn upsert(&self, instance: &M) -> crate::Result<()> {
         let table_name = M::table_name();
         let fields = Self::sql_fields();
         let placeholders = Self::sql_placeholders();
@@ -74,7 +74,7 @@ impl<M: Model> Objects<M> {
         Ok(())
     }
 
-    fn _convert_row_to_model(row: &Row) -> anyhow::Result<M> {
+    fn _convert_row_to_model(row: &Row) -> crate::Result<M> {
         let columns = (0..Self::field_count() + 1)
             .map(|i| row.get::<_, SqliteValue>(i))
             .collect::<Result<Vec<_>, _>>()?;
@@ -88,7 +88,7 @@ impl<M: Model> Objects<M> {
         M::fields().0.len()
     }
 
-    pub fn get(&self, id: i64) -> anyhow::Result<M> {
+    pub fn get(&self, id: i64) -> crate::Result<M> {
         self.select("id=?", (id,))?
             .pop()
             .ok_or(rusqlite::Error::QueryReturnedNoRows.into())
@@ -98,14 +98,13 @@ impl<M: Model> Objects<M> {
         &self,
         r#where: &str,
         params: impl rusqlite::Params + Clone,
-    ) -> anyhow::Result<Vec<M>> {
+    ) -> crate::Result<Vec<M>> {
         let table_name = M::table_name();
         self.connection
             .prepare(&format!(
                 r##"
                     SELECT * FROM {table_name}
-                    WHERE {where}
-                    LIMIT 500;
+                    WHERE {where};
                 "##
             ))?
             .query(params)?

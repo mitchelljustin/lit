@@ -1,5 +1,8 @@
 pub mod model;
-pub mod objects;
+pub mod query_set;
+
+pub use model::Model;
+pub use query_set::QuerySet;
 
 #[cfg(test)]
 mod tests;

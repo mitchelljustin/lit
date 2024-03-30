@@ -5,7 +5,8 @@ use std::sync::RwLock;
 
 use rusqlite::{Connection, ToSql};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, Type, ValueRef};
-use crate::objects::Objects;
+
+use crate::query_set::QuerySet;
 
 #[derive(Debug, Copy, Clone)]
 pub enum SqliteColumnType {
@@ -166,8 +167,8 @@ pub trait Model: Sized + Clone {
         Self::model_name().to_lowercase() + "s"
     }
 
-    fn objects() -> Objects<Self> {
-        Objects {
+    fn objects() -> QuerySet<Self> {
+        QuerySet {
             connection: new_db_connection().unwrap(),
             _marker: PhantomData,
         }
@@ -182,7 +183,7 @@ pub trait Model: Sized + Clone {
         let fields_inner = Self::fields()
             .0
             .iter()
-            .map(|f| format!("{} {}", f.name, f.col_type))
+            .map(|ModelField { name, col_type, .. }| format!("{name} {col_type}"))
             .collect::<Vec<_>>()
             .join(",\n");
         format!(
