@@ -19,27 +19,25 @@ pub fn my_derive(input: TokenStream) -> TokenStream {
     };
     let model_name_string = model_name.to_string();
     let fields = model_struct.fields.iter().filter_map(|field| {
-        let Some(ref name) = field.ident else {
-            return None;
-        };
+        let name = field.ident.clone()?;
         let name = name.to_string();
         let sqlite_type = match &field.ty {
             Type::Path(path) => {
                 let first_segment = path.path.segments.first().unwrap();
                 match first_segment.ident.to_string().as_str() {
                     "String" => SqliteColumnType::TEXT,
-                    "i64" => SqliteColumnType::INTEGER,
+                    "i64" | "u64" => SqliteColumnType::INTEGER,
                     "f64" => SqliteColumnType::REAL,
                     "bool" => SqliteColumnType::INTEGER,
                     _ => abort!(
                         field.ty.span(),
-                        "only allowed types for fields are: String, i64, f64, bool"
+                        "only allowed types for fields are: String, i64, u64, f64, bool"
                     ),
                 }
             }
             _ => abort!(
                 field.ty.span(),
-                "only allowed types for fields are: String, i64, f64, bool"
+                "only allowed types for fields are: String, i64, u64, f64, bool"
             ),
         };
         let sqlite_type = format_ident!("{sqlite_type}");

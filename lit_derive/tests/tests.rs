@@ -1,5 +1,5 @@
 use lit_derive::Model;
-use lit::model::ModelStruct;
+use lit::model::{setup_db, ModelStruct};
 
 #[derive(Model)]
 struct Person {
@@ -10,8 +10,14 @@ struct Person {
     x: f64,
 }
 
+fn init_db() {
+    Person::register();
+    setup_db("./out/test.sqlite").unwrap();
+}
+
 #[test]
 fn test_simple_model() {
+    init_db();
     assert_eq!(
         Person::table_name(),
         "persons",
