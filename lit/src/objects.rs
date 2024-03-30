@@ -1,5 +1,7 @@
-use rusqlite::{params_from_iter, Row};
 use std::marker::PhantomData;
+
+use rusqlite::{params_from_iter, Row};
+
 use crate::model::{Model, SqliteValue};
 
 pub struct Objects<M: Model> {
@@ -20,7 +22,7 @@ impl<M: Model> Objects<M> {
             params_from_iter(&instance.as_params()[1..]),
         )?;
         let id = self.connection.last_insert_rowid();
-        self.get(id)
+        self.get(id).map_err(Into::into)
     }
 
     fn sql_fields() -> String {
@@ -86,12 +88,27 @@ impl<M: Model> Objects<M> {
         M::fields().0.len()
     }
 
-    pub fn get(&self, id: i64) -> anyhow::Result<M> {
+    pub fn get(&self, id: i64) -> rusqlite::Result<M> {
+        self.select("id=?", (id,))?
+            .pop()
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)
+    }
+
+    pub fn select<'a>(
+        &'a self,
+        r#where: &'a str,
+        params: impl rusqlite::Params + Clone + 'a,
+    ) -> rusqlite::Result<Vec<M>> {
         let table_name = M::table_name();
-        Ok(self.connection.query_row(
-            &format!("SELECT * FROM {table_name} WHERE id=?;"),
-            (id,),
-            Self::_convert_row_to_model,
-        )?)
+        self.connection
+            .prepare(&format!(
+                r##"
+                SELECT * FROM {table_name}
+                WHERE {where};
+            "##
+            ))?
+            .query(params)?
+            .and_then(|row| Self::_convert_row_to_model(row))
+            .collect()
     }
 }

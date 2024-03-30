@@ -1,7 +1,7 @@
 use lit::model::{Model, setup_db};
 use lit_derive::ModelStruct;
 
-#[derive(Default, Clone, ModelStruct)]
+#[derive(Default, Debug, Clone, ModelStruct)]
 struct Person {
     id: i64,
 
@@ -31,4 +31,6 @@ fn test_simple_model() {
     assert!(yolo.id().is_some());
     yolo.last_name = "Swaggins".to_string();
     yolo.save().unwrap();
+    let yolos = Person::objects().select("first_name=?", ("Yolo".to_string(),));
+    println!("{yolos:#?}");
 }
