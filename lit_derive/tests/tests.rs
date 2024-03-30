@@ -22,4 +22,12 @@ fn test_simple_model() {
         Person::table_name(),
         "persons",
     );
+    let p = Person {
+        x: 0.5,
+        id: 100,
+        first_name: "Yolo".to_string(),
+        last_name: "Swag".to_string(),
+        is_staff: true,
+    };
+    Person::objects().insert(p).unwrap();
 }

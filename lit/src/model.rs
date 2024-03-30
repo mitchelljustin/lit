@@ -3,15 +3,33 @@ use std::fmt::{Display, Formatter};
 use std::marker;
 use std::sync::RwLock;
 
-use rusqlite::Connection;
+use rusqlite::types::ToSqlOutput;
+use rusqlite::{Connection, params_from_iter, ToSql};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SqliteColumnType {
     TEXT,
     INTEGER,
     REAL,
     NULL,
     BLOB,
+}
+
+#[derive(Debug, Clone)]
+pub enum SqliteValue {
+    TEXT(String),
+    INTEGER(i64),
+    REAL(f64),
+}
+
+impl ToSql for SqliteValue {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        match self {
+            SqliteValue::TEXT(v) => v.to_sql(),
+            SqliteValue::INTEGER(v) => v.to_sql(),
+            SqliteValue::REAL(v) => v.to_sql(),
+        }
+    }
 }
 
 impl Display for SqliteColumnType {
@@ -51,7 +69,22 @@ pub struct Objects<Model: ModelStruct> {
     _marker: PhantomData<Model>,
 }
 
-impl<Model: ModelStruct> Objects<Model> {}
+impl<Model: ModelStruct> Objects<Model> {
+    pub fn insert(&self, m: Model) -> rusqlite::Result<()> {
+        let table_name = Model::table_name();
+        let placeholders = Model::fields()
+            .0
+            .iter()
+            .map(|_| "?".to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.connection.execute(
+            &format!(r#"INSERT INTO {table_name} VALUES ({placeholders});"#),
+            params_from_iter(m.as_params()),
+        )?;
+        Ok(())
+    }
+}
 
 static FILEPATH: RwLock<Option<String>> = RwLock::new(None);
 
@@ -79,6 +112,8 @@ pub trait ModelStruct: Sized {
     fn model_name() -> &'static str;
 
     fn fields() -> ModelFields<Self>;
+
+    fn as_params(&self) -> Vec<SqliteValue>;
 
     fn table_name() -> String {
         Self::model_name().to_lowercase() + "s"
