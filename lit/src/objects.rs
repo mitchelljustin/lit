@@ -74,12 +74,12 @@ impl<M: Model> Objects<M> {
         Ok(())
     }
 
-    fn _convert_row_to_model(row: &Row) -> rusqlite::Result<M> {
+    fn _convert_row_to_model(row: &Row) -> anyhow::Result<M> {
         let columns = (0..Self::field_count() + 1)
             .map(|i| row.get::<_, SqliteValue>(i))
             .collect::<Result<Vec<_>, _>>()?;
         let Some(model) = M::from_row(columns) else {
-            return Err(rusqlite::Error::InvalidQuery);
+            anyhow::bail!("unable to convert row to model");
         };
         Ok(model)
     }
@@ -88,24 +88,25 @@ impl<M: Model> Objects<M> {
         M::fields().0.len()
     }
 
-    pub fn get(&self, id: i64) -> rusqlite::Result<M> {
+    pub fn get(&self, id: i64) -> anyhow::Result<M> {
         self.select("id=?", (id,))?
             .pop()
-            .ok_or(rusqlite::Error::QueryReturnedNoRows)
+            .ok_or(rusqlite::Error::QueryReturnedNoRows.into())
     }
 
-    pub fn select<'a>(
-        &'a self,
-        r#where: &'a str,
-        params: impl rusqlite::Params + Clone + 'a,
-    ) -> rusqlite::Result<Vec<M>> {
+    pub fn select(
+        &self,
+        r#where: &str,
+        params: impl rusqlite::Params + Clone,
+    ) -> anyhow::Result<Vec<M>> {
         let table_name = M::table_name();
         self.connection
             .prepare(&format!(
                 r##"
-                SELECT * FROM {table_name}
-                WHERE {where};
-            "##
+                    SELECT * FROM {table_name}
+                    WHERE {where}
+                    LIMIT 500;
+                "##
             ))?
             .query(params)?
             .and_then(|row| Self::_convert_row_to_model(row))
