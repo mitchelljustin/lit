@@ -7,8 +7,6 @@ use quote::quote;
 use syn::spanned::Spanned;
 use syn::{parse_macro_input, Data};
 
-mod model;
-
 #[proc_macro_error]
 #[proc_macro_derive(Model)]
 pub fn my_derive(input: TokenStream) -> TokenStream {
@@ -17,10 +15,13 @@ pub fn my_derive(input: TokenStream) -> TokenStream {
     let Data::Struct(model_struct) = input.data else {
         proc_macro_error::abort!(input.span(), "Model can only be derived from struct");
     };
+    let model_name_string = model_name.to_string();
     
     let tokens = quote! {
         impl lit::model::ModelStruct for #model_name {
-            
+            fn model_name() -> &'static str {
+                #model_name_string
+            }
         }
     };
 

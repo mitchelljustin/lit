@@ -1,4 +1,5 @@
-use lit::Model;
+use lit_derive::Model;
+use lit::model::ModelStruct;
 
 #[derive(Model)]
 struct Person {
@@ -10,5 +11,8 @@ struct Person {
 
 #[test]
 fn test_simple_model() {
-    println!("{swag}");
+    assert_eq!(
+        Person::table_name(),
+        "persons",
+    );
 }
