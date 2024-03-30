@@ -21,11 +21,14 @@ fn test_simple_model() {
     init_db();
     assert_eq!(Person::table_name(), "persons",);
     let mut yolo = Person {
-        x: 0.99,
         first_name: "Yolo".to_string(),
         last_name: "Swag".to_string(),
         is_staff: false,
+        x: 0.99,
         ..Default::default()
     };
+    yolo.save().unwrap();
+    assert!(yolo.id().is_some());
+    yolo.last_name = "Swaggins".to_string();
     yolo.save().unwrap();
 }
