@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use rusqlite::{params_from_iter, Row, types::FromSql};
+use rusqlite::{params_from_iter, Row};
 
 use crate::model::Model;
 
@@ -41,15 +41,10 @@ impl<M: Model> QuerySet<M> {
             .join(", ")
     }
 
-    pub fn save(&self, instance: &M) -> crate::Result<M> {
+    pub fn upsert(&self, instance: &M) -> crate::Result<M> {
         if instance.id().is_none() {
             return self.insert(instance);
         }
-        self.upsert(instance)?;
-        Ok(instance.clone())
-    }
-
-    pub fn upsert(&self, instance: &M) -> crate::Result<()> {
         let table_name = M::table_name();
         let fields = Self::sql_fields();
         let placeholders = Self::sql_placeholders();
@@ -71,7 +66,7 @@ impl<M: Model> QuerySet<M> {
             ),
             params_from_iter(instance.as_params()),
         )?;
-        Ok(())
+        Ok(instance.clone())
     }
 
     fn _convert_row_to_model(row: &Row) -> crate::Result<M> {
@@ -94,7 +89,7 @@ impl<M: Model> QuerySet<M> {
     pub fn select(
         &self,
         r#where: &str,
-        params: impl rusqlite::Params + Clone,
+        params: impl rusqlite::Params,
     ) -> crate::Result<Vec<M>> {
         let table_name = M::table_name();
         self.connection

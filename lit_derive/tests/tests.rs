@@ -25,6 +25,7 @@ fn test_simple_model() -> lit::Result<()> {
         last_name: "Swag".to_string(),
         ..Default::default()
     };
+    assert!(yolo.id().is_none());
     yolo.save()?;
     assert!(yolo.id().is_some());
     yolo.last_name = "Swaggins".to_string();

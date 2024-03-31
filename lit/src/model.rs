@@ -87,7 +87,7 @@ pub trait Model: Sized + Clone {
     }
 
     fn save(&mut self) -> crate::Result<()> {
-        *self = Self::objects().save(self)?;
+        *self = Self::objects().upsert(self)?;
         Ok(())
     }
 }
