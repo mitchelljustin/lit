@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
-use rusqlite::{params_from_iter, Row};
+use rusqlite::{params_from_iter, Row, types::FromSql};
 
-use crate::model::{Model, SqliteValue};
+use crate::model::Model;
 
 pub struct QuerySet<M: Model> {
     pub connection: rusqlite::Connection,
@@ -76,12 +76,9 @@ impl<M: Model> QuerySet<M> {
 
     fn _convert_row_to_model(row: &Row) -> crate::Result<M> {
         let columns = (0..Self::field_count() + 1)
-            .map(|i| row.get::<_, SqliteValue>(i))
+            .map(|i| row.get::<_, rusqlite::types::Value>(i))
             .collect::<Result<Vec<_>, _>>()?;
-        let Some(model) = M::from_row(columns) else {
-            anyhow::bail!("unable to convert row to model");
-        };
-        Ok(model)
+        M::from_row(columns).map_err(Into::into)
     }
 
     pub fn field_count() -> usize {

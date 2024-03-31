@@ -17,20 +17,19 @@ fn init_db() {
 }
 
 #[test]
-fn test_simple_model() {
+fn test_simple_model() -> lit::Result<()> {
     init_db();
     assert_eq!(Person::table_name(), "persons",);
     let mut yolo = Person {
         first_name: "Yolo".to_string(),
         last_name: "Swag".to_string(),
-        is_staff: false,
-        x: 0.99,
         ..Default::default()
     };
-    yolo.save().unwrap();
+    yolo.save()?;
     assert!(yolo.id().is_some());
     yolo.last_name = "Swaggins".to_string();
-    yolo.save().unwrap();
+    yolo.save()?;
     let yolos = Person::objects().find_by_first_name("Yolo");
     println!("{yolos:#?}");
+    Ok(())
 }

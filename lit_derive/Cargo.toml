@@ -14,6 +14,7 @@ quote = "1"
 proc-macro2 = "1.0"
 syn = "2.0.55"
 proc-macro-error = "1.0.4"
+rusqlite = "0.31.0"
 
 [dependencies.lit]
 path = "../lit"

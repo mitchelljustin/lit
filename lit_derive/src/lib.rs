@@ -9,12 +9,10 @@ use quote::{format_ident, quote};
 use syn::{Data, Field, Fields, parse_macro_input, Type};
 use syn::spanned::Spanned;
 
-use lit::model::SqliteColumnType;
-
 #[derive(Clone)]
 struct ModelFieldMeta {
     name: Ident,
-    col_type: SqliteColumnType,
+    col_type: rusqlite::types::Type,
     field: Field,
 }
 
@@ -65,7 +63,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 quote! {
                     lit::model::ModelField {
                         name: #name,
-                        col_type: lit::model::SqliteColumnType::#col_type,
+                        col_type: rusqlite::types::Type::#col_type,
                         _marker: std::marker::PhantomData,
                     }
                 }
@@ -77,7 +75,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             .map(|ModelFieldMeta { name, col_type, .. }| {
                 let col_type = format_ident!("{col_type}");
                 quote! {
-                    lit::model::SqliteValue::#col_type(self.#name.clone().into())
+                    rusqlite::types::Value::#col_type(self.#name.clone().into())
                 }
             });
     let model_method_sigs = model_fields
@@ -105,7 +103,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 let selector = format!("{name}=?");
                 quote! {
                     #fn_sig {
-                        let param = lit::model::SqliteValue::from(value.into());
+                        let param = rusqlite::types::Value::from(value.into());
                         self.select(
                             #selector,
                             (param,),
@@ -136,18 +134,26 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 )
             }
 
-            fn as_params(&self) -> std::vec::Vec<lit::model::SqliteValue> {
+            fn as_params(&self) -> std::vec::Vec<rusqlite::types::Value> {
                 vec![
-                    lit::model::SqliteValue::INTEGER(self.id),
+                    rusqlite::types::Value::Integer(self.id),
                     #(#values_quoted),*
                 ]
             }
 
-            fn from_row(row: impl IntoIterator<Item=lit::model::SqliteValue>) -> Option<Self> {
+            fn from_row(row: impl IntoIterator<Item=rusqlite::types::Value>) -> rusqlite::types::FromSqlResult<Self> {
                 let mut iter = row.into_iter();
-                Some(Self {
-                    id: <Option<i64>>::from(iter.next()?)?,
-                    #(#field_names:  <Option<_>>::from(iter.next()?)?),*
+                let mut next = || {
+                    let Some(item) = iter.next() else {
+                        return Err(rusqlite::types::FromSqlError::Other("not enough items".into()));
+                    };
+                    Ok(item)
+                };
+                Ok(Self {
+                    id: rusqlite::types::FromSql::column_result((&next()?).into())?,
+                    #(
+                        #field_names: rusqlite::types::FromSql::column_result((&next()?).into())?
+                    ),*
                 })
             }
         }
@@ -164,15 +170,15 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     tokens.into()
 }
 
-fn column_type_of(field: &Field) -> SqliteColumnType {
+fn column_type_of(field: &Field) -> rusqlite::types::Type {
     match &field.ty {
         Type::Path(path) => {
             let first_segment = path.path.segments.first().unwrap();
             match first_segment.ident.to_string().as_str() {
-                "String" => SqliteColumnType::TEXT,
-                "i64" => SqliteColumnType::INTEGER,
-                "f64" => SqliteColumnType::REAL,
-                "bool" => SqliteColumnType::INTEGER,
+                "String" => rusqlite::types::Type::Text,
+                "i64" => rusqlite::types::Type::Integer,
+                "f64" => rusqlite::types::Type::Real,
+                "bool" => rusqlite::types::Type::Integer,
                 _ => abort!(
                     field.ty.span(),
                     "only allowed types for fields are: String, i64, f64, bool"
