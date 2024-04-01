@@ -81,16 +81,15 @@ impl<M: Model> QuerySet<M> {
     }
 
     pub fn get(&self, id: i64) -> crate::Result<M> {
-        self.select("id=?", (id,))?
-            .pop()
+        self.find_by_id(id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows.into())
     }
 
-    pub fn select(
-        &self,
-        r#where: &str,
-        params: impl rusqlite::Params,
-    ) -> crate::Result<Vec<M>> {
+    pub fn find_by_id(&self, id: i64) -> crate::Result<Option<M>> {
+        Ok(self.select("id=?", (id,))?.pop())
+    }
+
+    pub fn select(&self, r#where: &str, params: impl rusqlite::Params) -> crate::Result<Vec<M>> {
         let table_name = M::table_name();
         self.connection
             .prepare(&format!(
