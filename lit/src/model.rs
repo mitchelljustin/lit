@@ -51,7 +51,7 @@ pub trait Model: Sized + Clone {
     ) -> rusqlite::types::FromSqlResult<Self>;
 
     fn table_name() -> String {
-        Self::model_name().to_lowercase() + "s"
+        Self::model_name().to_lowercase()
     }
 
     fn objects() -> QuerySet<Self> {

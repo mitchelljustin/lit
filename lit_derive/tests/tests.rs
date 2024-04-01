@@ -8,18 +8,27 @@ struct Person {
     first_name: String,
     last_name: String,
     is_staff: bool,
-    x: f64,
+
+    #[foreign_key(Company)]
+    company_id: i64,
 }
 
-fn init_db() {
+#[derive(Default, Debug, Clone, ModelStruct)]
+struct Company {
+    id: i64,
+    name: String,
+}
+
+fn init_database() {
     Person::register();
+    Company::register();
     setup_db("./out/test.sqlite").unwrap();
 }
 
 #[test]
 fn test_simple_model() -> lit::Result<()> {
-    init_db();
-    assert_eq!(Person::table_name(), "persons",);
+    init_database();
+    assert_eq!(Person::table_name(), "person",);
     let mut yolo = Person {
         first_name: "Yolo".to_string(),
         last_name: "Swag".to_string(),
@@ -32,5 +41,12 @@ fn test_simple_model() -> lit::Result<()> {
     yolo.save()?;
     let yolos = Person::objects().find_by_first_name("Yolo");
     println!("{yolos:#?}");
+    let mut yolocorp = Company {
+        name: "Yolocorp".to_string(),
+        ..Default::default()
+    };
+    yolocorp.save()?;
+    yolo.company_id = yolocorp.id;
+    assert_eq!(&yolo.company()?.unwrap().name, &yolocorp.name,);
     Ok(())
 }

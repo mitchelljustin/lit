@@ -6,18 +6,19 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
-use syn::{Data, Field, Fields, parse_macro_input, Type};
 use syn::spanned::Spanned;
+use syn::{parse_macro_input, Data, Field, Fields, Meta, Path, Type};
 
 #[derive(Clone)]
 struct ModelFieldMeta {
     name: Ident,
     col_type: rusqlite::types::Type,
     field: Field,
+    foreign_key: Option<Path>,
 }
 
 #[proc_macro_error]
-#[proc_macro_derive(ModelStruct)]
+#[proc_macro_derive(ModelStruct, attributes(foreign_key))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
     let input: syn::DeriveInput = parse_macro_input!(input);
     let model_name = input.ident.clone();
@@ -45,9 +46,32 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         .map(|field| {
             let name = field.ident.clone().unwrap();
             let col_type = column_type_of(field);
+            let foreign_key = field
+                .attrs
+                .iter()
+                .filter_map(|attr| {
+                    let Meta::List(list) = &attr.meta else {
+                        return None;
+                    };
+                    if list.path.segments.first().unwrap().ident != "foreign_key" {
+                        return None;
+                    }
+                    let Ok(linked_model) = syn::parse2::<Path>(list.tokens.clone()) else {
+                        abort!(list.tokens.span(), "foreign key target must be a path");
+                    };
+                    Some(linked_model)
+                })
+                .next();
+            if foreign_key.is_some() && !name.to_string().ends_with("_id") {
+                abort!(
+                    name.span(),
+                    "name of foreign key field must end with '_id'",
+                );
+            }
             ModelFieldMeta {
                 name,
                 col_type,
+                foreign_key,
                 field: field.clone(),
             }
         })
@@ -78,7 +102,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     rusqlite::types::Value::#col_type(self.#name.clone().into())
                 }
             });
-    let model_method_sigs = model_fields
+    let query_set_method_sigs = model_fields
         .iter()
         .cloned()
         .map(|ModelFieldMeta { name, field, .. }| {
@@ -90,13 +114,13 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         })
         .zip(model_fields.iter().cloned())
         .collect::<Vec<_>>();
-    let model_trait_methods = model_method_sigs.iter().cloned().map(|(fn_sig, _)| {
+    let query_set_trait_methods = query_set_method_sigs.iter().cloned().map(|(fn_sig, _)| {
         quote! {
             #fn_sig;
         }
     });
-    let model_trait_method_impls =
-        model_method_sigs
+    let query_set_trait_method_impls =
+        query_set_method_sigs
             .iter()
             .cloned()
             .map(|(fn_sig, ModelFieldMeta { name, .. })| {
@@ -111,7 +135,47 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     }
                 }
             });
-    let trait_name = format_ident!("{model_name}Methods");
+    let query_set_trait_name = format_ident!("{model_name}QuerySetExt");
+    let model_ext_trait_name = format_ident!("{model_name}Ext");
+    let model_ext_method_sigs = model_fields
+        .iter()
+        .filter_map(|f| {
+            let foreign_key = f.foreign_key.as_ref()?;
+            let name = f.name.to_string();
+            let fk_meth_name = &name[..name.len() - 3];
+            let fk_meth_name = Ident::new(fk_meth_name, f.field.span());
+            Some((
+                quote! {
+                    fn #fk_meth_name(&self) -> lit::Result<Option<#foreign_key>>
+                },
+                f,
+            ))
+        })
+        .collect::<Vec<_>>();
+    let model_ext_trait_methods = model_ext_method_sigs.iter().map(|(fn_sig, _)| {
+        quote! {
+            #fn_sig;
+        }
+    });
+    let model_ext_trait_method_impls = model_ext_method_sigs.iter().map(|(fn_sig, f)| {
+        let id_field_name = &f.name;
+        let fk_model = f.foreign_key.as_ref().unwrap();
+        quote! {
+            #fn_sig {
+                if self.#id_field_name == 0 {
+                    return Ok(None);
+                }
+                Ok(
+                    #fk_model::objects()
+                    .select(
+                        "id=?",
+                        (self.#id_field_name,),
+                    )?
+                    .pop()
+                )
+            }
+        }
+    });
     let tokens = quote! {
         impl lit::model::Model for #model_name {
             fn id(&self) -> Option<i64> {
@@ -158,12 +222,20 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             }
         }
 
-        trait #trait_name {
-            #(#model_trait_methods)*
+        trait #model_ext_trait_name {
+            #(#model_ext_trait_methods)*
         }
 
-        impl #trait_name for lit::query_set::QuerySet<#model_name> {
-            #(#model_trait_method_impls)*
+        impl #model_ext_trait_name for #model_name {
+            #(#model_ext_trait_method_impls)*
+        }
+
+        trait #query_set_trait_name {
+            #(#query_set_trait_methods)*
+        }
+
+        impl #query_set_trait_name for lit::query_set::QuerySet<#model_name> {
+            #(#query_set_trait_method_impls)*
         }
     };
 
