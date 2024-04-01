@@ -46,7 +46,8 @@ fn test_simple_model() -> lit::Result<()> {
         ..Default::default()
     };
     yolocorp.save()?;
-    yolo.company_id = yolocorp.id;
-    assert_eq!(&yolo.company()?.unwrap().name, &yolocorp.name,);
+    yolo.set_company(&yolocorp);
+    yolo.save()?;
+    assert_eq!(&yolo.company()?.as_ref().unwrap().name, &yolocorp.name,);
     Ok(())
 }

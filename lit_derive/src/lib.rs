@@ -6,15 +6,15 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
+use syn::{Data, Field, Fields, Meta, parse_macro_input, Path, Type};
 use syn::spanned::Spanned;
-use syn::{parse_macro_input, Data, Field, Fields, Meta, Path, Type};
 
 #[derive(Clone)]
 struct ModelFieldMeta {
     name: Ident,
     col_type: rusqlite::types::Type,
     field: Field,
-    foreign_key: Option<Path>,
+    foreign_key_model: Option<Path>,
 }
 
 #[proc_macro_error]
@@ -63,15 +63,12 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 })
                 .next();
             if foreign_key.is_some() && !name.to_string().ends_with("_id") {
-                abort!(
-                    name.span(),
-                    "name of foreign key field must end with '_id'",
-                );
+                abort!(name.span(), "name of foreign key field must end with '_id'",);
             }
             ModelFieldMeta {
                 name,
                 col_type,
-                foreign_key,
+                foreign_key_model: foreign_key,
                 field: field.clone(),
             }
         })
@@ -140,42 +137,53 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let model_ext_method_sigs = model_fields
         .iter()
         .filter_map(|f| {
-            let foreign_key = f.foreign_key.as_ref()?;
+            let foreign_key_model = f.foreign_key_model.as_ref()?;
             let name = f.name.to_string();
             let fk_meth_name = &name[..name.len() - 3];
             let fk_meth_name = Ident::new(fk_meth_name, f.field.span());
+            let set_fk_meth_name = Ident::new(&format!("set_{fk_meth_name}"), f.field.span());
             Some((
-                quote! {
-                    fn #fk_meth_name(&self) -> lit::Result<Option<#foreign_key>>
-                },
+                [
+                    quote! {
+                        fn #fk_meth_name(&self) -> lit::Result<Option<#foreign_key_model>>
+                    },
+                    quote! {
+                        fn #set_fk_meth_name(&mut self, instance: &#foreign_key_model)
+                    },
+                ],
                 f,
             ))
         })
         .collect::<Vec<_>>();
-    let model_ext_trait_methods = model_ext_method_sigs.iter().map(|(fn_sig, _)| {
-        quote! {
-            #fn_sig;
-        }
-    });
-    let model_ext_trait_method_impls = model_ext_method_sigs.iter().map(|(fn_sig, f)| {
-        let id_field_name = &f.name;
-        let fk_model = f.foreign_key.as_ref().unwrap();
-        quote! {
-            #fn_sig {
-                if self.#id_field_name == 0 {
-                    return Ok(None);
+    let model_ext_trait_methods = model_ext_method_sigs
+        .iter()
+        .flat_map(|(fn_sigs, _)| fn_sigs.clone().map(|sig| quote! {#sig;}));
+    let model_ext_trait_method_impls =
+        model_ext_method_sigs
+            .iter()
+            .map(|([fk_meth, set_fk_meth], f)| {
+                let id_field_name = &f.name;
+                let fk_model = f.foreign_key_model.as_ref().unwrap();
+                quote! {
+                    #fk_meth {
+                        if self.#id_field_name == 0 {
+                            return Ok(None);
+                        }
+                        Ok(
+                            #fk_model::objects()
+                            .select(
+                                "id=?",
+                                (self.#id_field_name,),
+                            )?
+                            .pop()
+                        )
+                    }
+
+                    #set_fk_meth {
+                        self.#id_field_name = instance.id;
+                    }
                 }
-                Ok(
-                    #fk_model::objects()
-                    .select(
-                        "id=?",
-                        (self.#id_field_name,),
-                    )?
-                    .pop()
-                )
-            }
-        }
-    });
+            });
     let tokens = quote! {
         impl lit::model::Model for #model_name {
             fn id(&self) -> Option<i64> {
